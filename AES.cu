@@ -252,8 +252,9 @@ AES_Sbox_Inv[240] = 0x17;AES_Sbox_Inv[241] = 0x2b;AES_Sbox_Inv[242] = 0x4;AES_Sb
     for(i = 0; i < 16; i++)
         AES_ShiftRowTab_Inv[AES_ShiftRowTab[i]] = i;
     for(i = 0; i < 128; i++) {
-        AES_xtime[i] = i << 1;
-        AES_xtime[128 + i] = (i << 1) ^ 0x1b;  //定义了xtime，用于mixcolumn
+        AES_xtime[i] = i << 1;         //最高位为0的数左移一位，然后最高位溢出舍弃
+        AES_xtime[128 + i] = (i << 1) ^ 0x1b;   //最高位为1的数左移一位然后和00011011异或
+                                                 //定义了xtime，用于mixcolumn，本来是一个矩阵乘法操作，这里用异或和查表进行了简化
     }
 }
 
@@ -270,11 +271,11 @@ int AES_ExpandKey(BYTE key[], int keyLen) {
     int kl = keyLen, ks, Rcon = 1, i, j;
     BYTE temp[4], temp2[4];
     switch (kl) {
-        case 16: ks = 16 * (10 + 1); break;
-        case 24: ks = 16 * (12 + 1); break;
-        case 32: ks = 16 * (14 + 1); break;
+        case 16: ks = 16 * (10 + 1); break;    //对应128bit加密，加密10轮
+        case 24: ks = 16 * (12 + 1); break;    //对应192bit加密，加密12轮
+        case 32: ks = 16 * (14 + 1); break;    //对应256bit加密，加密14轮
         default: 
-        printf("AES_ExpandKey: Only key lengths of 16, 24 or 32 bytes allowed!");
+        printf("AES_ExpandKey: Only key lengths of 16, 24 or 32 bytes allowed!");  //只有以上三种加密方法
 }
     for(i = kl; i < ks; i += 4) {
         memcpy(temp, &key[i-4], 4);
@@ -297,7 +298,7 @@ int AES_ExpandKey(BYTE key[], int keyLen) {
     for(j = 0; j < 4; j++)
         key[i + j] = key[i + j - kl] ^ temp[j];
     }
-    return ks;
+    return ks;  //返回的是expandkey的length
 }
 
 // AES_Encrypt: encrypt the 16 byte array 'block' with the previously expanded key 'key'.
@@ -306,7 +307,7 @@ __global__ void AES_Encrypt(aes_block aes_block_array[], BYTE key[], int keyLen,
     int global_thread_index = blockDim.x*blockIdx.x + threadIdx.x;
 //    printf("global thread index = %d\n", global_thread_index);
     
-    __shared__ BYTE AES_ShiftRowTab[16];
+    __shared__ BYTE AES_ShiftRowTab[16];    //共享内存
     __shared__ BYTE AES_Sbox[256];
     __shared__ BYTE AES_ShiftRowTab_Inv[16];
     __shared__ BYTE AES_Sbox_Inv[256];
@@ -317,34 +318,34 @@ __global__ void AES_Encrypt(aes_block aes_block_array[], BYTE key[], int keyLen,
 
         if(threadIdx.x == 0 ){
         //    printf("hello from thread 0\n");
-            AES_Init(AES_Sbox, AES_ShiftRowTab, AES_Sbox_Inv, AES_xtime, AES_ShiftRowTab_Inv);
+            AES_Init(AES_Sbox, AES_ShiftRowTab, AES_Sbox_Inv, AES_xtime, AES_ShiftRowTab_Inv);  //第一个线程对所有数组初始化赋值
         }
-        __syncthreads();
+        __syncthreads();   //所有线程必须等待线程0完成初始化后才能执行同步后面的语句
         BYTE block[16]; 
         //cudaMemcpy(block, aes_block_array[global_thread_index].block, 16*sizeof(BYTE), cudaMemcpyDeviceToDevice);
         for(int i=0; i<16; i++){
-            block[i] = aes_block_array[global_thread_index].block[i];
+            block[i] = aes_block_array[global_thread_index].block[i];  //不同线程的block，每个block有16个元素
 //		printf("%d %d %d\n",i, global_thread_index, block[i]);
         }
-        int l = keyLen, i;
+        int l = keyLen, i;  //l=expandkeylen, eg. 16*(10+1) byte
         //printBytes(block, 16);
         AES_AddRoundKey(block, &key[0]);
-        for(i = 16; i < l - 16; i += 16) {
+        for(i = 16; i < l - 16; i += 16) {   //aes-128这个循环有9轮
             AES_SubBytes(block, AES_Sbox);
            AES_ShiftRows(block, AES_ShiftRowTab);
            AES_MixColumns(block, AES_xtime);
-            AES_AddRoundKey(block, &key[i]);
+            AES_AddRoundKey(block, &key[i]);  
         }
         AES_SubBytes(block, AES_Sbox);
         AES_ShiftRows(block, AES_ShiftRowTab);
-        AES_AddRoundKey(block, &key[i]);
+        AES_AddRoundKey(block, &key[i]);   //最后一轮没有mixcolumn
 //        for(int j=15; j>=0; j--)
 //{
 //printf("==%d %d\n",j, aes_block_array[global_thread_index].block[j] );
 //}
         for(int i=0; i<16; i++){
   //          printf("%d %d  %d\n",i, global_thread_index, aes_block_array[global_thread_index].block[i]);
-         aes_block_array[global_thread_index].block[i] = block[i];
+         aes_block_array[global_thread_index].block[i] = block[i];  //将加密后的block写回各个线程的block中
         }
         //printf("block %d encrypted\n", global_thread_index);
     }
@@ -408,14 +409,14 @@ int main(int argc, char* argv[]) {
     ifs.seekg(0, ios::end);
     int infileLength = ifs.tellg();
     ifs.seekg (0, ios::beg);
-    cout<<"Length of input file: "<<infileLength<<endl;
+    cout<<"Length of input file: "<<infileLength<<endl;   //输入文件长度
 
 
-int block_number = infileLength/16 ;
-int number_of_zero_pending = infileLength%16;
+int block_number = infileLength/16 ;     //分成不同的block，每个block有16个元素
+int number_of_zero_pending = infileLength%16;   //在最后剩下的不足16的输入元素，=16-需要补0的数量
 aes_block* aes_block_array;
 
-BYTE key[16 * (14 + 1)];
+BYTE key[16 * (14 + 1)];  //因为256bit密钥也只需要加密14轮，注意这里还是16不是32
 int keyLen = 0;
 //, maxKeyLen=16 * (14 + 1),
 int blockLen = 16;
@@ -441,7 +442,7 @@ switch (keyLen)
   case 24:break;
   case 32:break;
   default:printf("ERROR : keyLen should be 128, 192, 256bits\n"); return 0;
-}
+}   //检验key位数是否正确
 
 //for(int i=0; i<keyLen; i++)
 //{
@@ -450,7 +451,7 @@ switch (keyLen)
 
 
 //printf("Original key: \n"); printBytes(key, keyLen);
-int expandKeyLen = AES_ExpandKey(key, keyLen);
+int expandKeyLen = AES_ExpandKey(key, keyLen);   //这个key不是引用会expand吗？
 //printf("Expanede key: \n"); printBytes(key, expandKeyLen);
 //for(int i=0; i<expandKeyLen; i++)
 //printf("%x ", key[i]);
@@ -469,7 +470,7 @@ en_fp = fopen(argv[3], "wb");
 de_fp = fopen(argv[4], "wb");
 for(int i=0; i<block_number; i++){
     
-    ifs.read(temp, 16);
+    ifs.read(temp, 16);  //把inputfile存入temp中
     for(int j=0; j<16; j++){
         aes_block_array[i].block[j] = (unsigned char)temp[j];
     }
@@ -481,7 +482,7 @@ if(number_of_zero_pending != 0)
         aes_block_array[block_number].block[j] = (unsigned char)temp[j];
     }
     for(int j=1; j<=16-number_of_zero_pending; j++)
-        aes_block_array[block_number].block[16-j] = '\0';
+        aes_block_array[block_number].block[16-j] = '\0';  //在后面补0
     //f1printBytes(aes_block_array[block_number].block, blockLen, orig_fp);
     //AES_Encrypt(aes_block_array[block_number].block, key, expandKeyLen);
     //printf("After Encryption:\n"); printBytes(block, blockLen);
@@ -507,7 +508,7 @@ if(block_number%num_sm>0)
     thrdperblock++;
 
 if(thrdperblock>1024){
-    thrdperblock = 1024;
+    thrdperblock = 1024;  //每个sm最多有1024个线程
     num_sm = block_number/1024;
     if(block_number%1024>0){
         num_sm++;
