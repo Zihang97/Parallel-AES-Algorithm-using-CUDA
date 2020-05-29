@@ -13,7 +13,7 @@ using namespace std;
 class aes_block
 {
 public:
-    BYTE block[16];
+    BYTE block[16];  //每个元素1 byte
 };
 
 void printBytes(BYTE b[], int len) {
@@ -39,7 +39,7 @@ int i;
 for (i=0; i<len; i++){
    fprintf(fp, "%c", b[i]);  //以char字符型输出到文件中
    if(b[i]=='\n')
-        flag++;
+        flag++;   //可以查看有多少block写入
    }
 //    cout << hex << b[i] << " " ;
 //fprintf(fp, "\n");
@@ -108,13 +108,13 @@ BYTE AES_Sbox[] =
 __device__ void AES_SubBytes(BYTE state[], BYTE sbox[]) {
 int i;
 for(i = 0; i < 16; i++)
-    state[i] = sbox[state[i]];
+    state[i] = sbox[state[i]];   //查表替换
 }
 
 __device__ void AES_AddRoundKey(BYTE state[], BYTE rkey[]) {
     int i;
     for(i = 0; i < 16; i++)
-        state[i] ^= rkey[i];
+        state[i] ^= rkey[i];   //与key异或
 }
 
 __device__ void AES_ShiftRows(BYTE state[], BYTE shifttab[]) {
@@ -122,7 +122,7 @@ __device__ void AES_ShiftRows(BYTE state[], BYTE shifttab[]) {
     memcpy(h, state, 16);
     int i;
     for(i = 0; i < 16; i++)
-        state[i] = h[shifttab[i]];
+        state[i] = h[shifttab[i]];   //在block 16个元素里进行换行
 }
 
 __device__ void AES_MixColumns(BYTE state[], BYTE AES_xtime[]) {
@@ -135,7 +135,7 @@ for(i = 0; i < 16; i += 4) {
     state[i + 0] ^= h ^ AES_xtime[s0 ^ s1];
     state[i + 1] ^= h ^ AES_xtime[s1 ^ s2];
     state[i + 2] ^= h ^ AES_xtime[s2 ^ s3];
-    state[i + 3] ^= h ^ AES_xtime[s3 ^ s0];
+    state[i + 3] ^= h ^ AES_xtime[s3 ^ s0];   //一个大型的异或操作，可能是将不同行元素的信息进行混合
 }
 }
 
@@ -253,7 +253,7 @@ AES_Sbox_Inv[240] = 0x17;AES_Sbox_Inv[241] = 0x2b;AES_Sbox_Inv[242] = 0x4;AES_Sb
         AES_ShiftRowTab_Inv[AES_ShiftRowTab[i]] = i;
     for(i = 0; i < 128; i++) {
         AES_xtime[i] = i << 1;
-        AES_xtime[128 + i] = (i << 1) ^ 0x1b;
+        AES_xtime[128 + i] = (i << 1) ^ 0x1b;  //定义了xtime，用于mixcolumn
     }
 }
 
