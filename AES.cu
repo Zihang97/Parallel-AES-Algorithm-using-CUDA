@@ -19,7 +19,7 @@ public:
 void printBytes(BYTE b[], int len) {
 int i;
 for (i=0; i<len; i++)
-    printf("%x ", b[i]);
+    printf("%x ", b[i]); // 以十六进制输出
 //    cout << hex << b[i] << " " ;
 printf("\n");
 }
@@ -28,15 +28,16 @@ printf("\n");
 void f1printBytes(BYTE b[], int len, FILE* fp) {
 int i;
 for (i=0; i<len; i++)
-   fprintf(fp, "%02x ", b[i]);
+   fprintf(fp, "%02x ", b[i]);   //以2位补零的十六进制输出到文件中
 //    cout << hex << b[i] << " " ;
 fprintf(fp, "\n");
 }
+
 int flag=0;
 void f2printBytes(BYTE b[], int len, FILE* fp) {
 int i;
 for (i=0; i<len; i++){
-   fprintf(fp, "%c", b[i]);
+   fprintf(fp, "%c", b[i]);  //以char字符型输出到文件中
    if(b[i]=='\n')
         flag++;
    }
